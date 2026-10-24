@@ -245,4 +245,4 @@ setInterval(() => {
   for (const [id, c] of clients) if (!c.ws && !c.room && !c.dropTimer) clients.delete(id);
 }, 25000);
 
-server.listen(PORT, () => console.log(`Dragon Lair server on :${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Dragon Lair server on 0.0.0.0:${PORT}`));
