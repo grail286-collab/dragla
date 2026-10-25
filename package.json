@@ -1,0 +1,17 @@
+{
+  "name": "dragon-lair-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Логово дракона — сервер сетевого лобби (WebSocket)",
+  "main": "server.js",
+  "scripts": {
+    "build": "echo \"build: nothing to compile\"",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
