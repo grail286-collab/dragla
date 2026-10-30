@@ -19,6 +19,8 @@ const ROOM_IDLE_MS = 10 * 60 * 1000;                      // пустая ком
 const MAX_SEATS = 4;
 const BOT_NAMES = ['Ульф', 'Ирма', 'Борг', 'Сельма'];
 const MAPS = ['small', 'medium', 'large'];
+const RULES = ['free', 'wake'];          // свободное исследование / пробуждение дракона
+const TIMERS = [0, 30, 60];              // таймер хода, секунд (0 — без таймера)
 const PORTRAITS = 8;
 
 // метка этой копии сервера: если при обновлении страницы она меняется — копий несколько
@@ -44,7 +46,7 @@ function send(cl, msg) {
 }
 function roomView(room) {
   return {
-    code: room.code, host: room.host, map: room.map, playing: !!room.game,
+    code: room.code, host: room.host, map: room.map, rules: room.rules, timer: room.timer, playing: !!room.game,
     slots: room.slots.map(s => s && (s.bot
       ? { bot: true, name: s.name, portrait: s.portrait }
       : { id: s.id, name: s.name, portrait: s.portrait, ready: !!s.ready, online: !!(clients.get(s.id) || {}).ws })),
@@ -99,9 +101,9 @@ function startGame(room) {
   const players = list.map(({ s }, k) => ({ seat: seats[k], name: s.name, portrait: s.portrait, cpu: !!s.bot, owner: s.bot ? null : s.id }));
   const seatOf = {};
   players.forEach((p, idx) => { if (p.owner) seatOf[p.owner] = idx; });
-  room.game = { id: rid(), seed: crypto.randomInt(1, 2 ** 31 - 1), seq: 0, log: [], players, seatOf, dropped: {}, nonces: new Set(), map: room.map, started: now() };
+  room.game = { id: rid(), seed: crypto.randomInt(1, 2 ** 31 - 1), seq: 0, log: [], players, seatOf, dropped: {}, nonces: new Set(), map: room.map, rules: room.rules, timer: room.timer, started: now() };
   room.slots.forEach(s => { if (s && !s.bot) s.ready = false; });
-  const start = { t: 'start', gid: room.game.id, seed: room.game.seed, map: room.map, players };
+  const start = { t: 'start', gid: room.game.id, seed: room.game.seed, map: room.map, rules: room.rules, timer: room.timer, players };
   room.slots.forEach(s => { if (s && !s.bot) send(clients.get(s.id), start); });
   broadcastRoom(room);
 }
@@ -124,7 +126,7 @@ function handle(cl, m) {
     case 'create': {
       if (room) leaveRoom(cl);
       const code = newCode();
-      const r = { code, host: cl.id, map: MAPS.includes(m.map) ? m.map : 'small', slots: [null, null, null, null], game: null, touched: now() };
+      const r = { code, host: cl.id, map: MAPS.includes(m.map) ? m.map : 'small', rules: 'free', timer: 0, v: +m.v || 1, slots: [null, null, null, null], game: null, touched: now() };
       r.slots[0] = { id: cl.id, name: clean(m.name, 14) || 'Герой', portrait: 0, ready: false };
       r.slots[0].portrait = freePortrait(r, +m.portrait, 0);
       rooms.set(code, r); cl.room = code;
@@ -136,6 +138,8 @@ function handle(cl, m) {
       if (!r) return send(cl, { t: 'error', code: 'noroom', msg: 'Комната с таким кодом не найдена.' });
       if (slotOf(r, cl.id) >= 0) { cl.room = code; broadcastRoom(r); return; }
       if (r.game) return send(cl, { t: 'error', code: 'playing', msg: 'В этой комнате уже идёт партия.' });
+      // разные версии игры считают партию по-разному — в одну комнату их не пускаем
+      if ((+m.v || 1) !== r.v) return send(cl, { t: 'error', code: 'version', msg: 'У вас с хозяином комнаты разные версии игры. Обновите игру на обоих телефонах.' });
       const i = r.slots.findIndex(s => !s);
       if (i < 0) return send(cl, { t: 'error', code: 'full', msg: 'Комната заполнена: в ней уже 4 героя.' });
       if (room && room !== r) leaveRoom(cl);
@@ -152,6 +156,8 @@ function handle(cl, m) {
     case 'ready': if (me >= 0 && !room.game) { room.slots[me].ready = !!m.v; broadcastRoom(room); } return;
     case 'portrait': if (me >= 0 && !room.game) { room.slots[me].portrait = freePortrait(room, +m.v, me); broadcastRoom(room); } return;
     case 'map': if (isHost && !room.game && MAPS.includes(m.v)) { room.map = m.v; broadcastRoom(room); } return;
+    case 'rules': if (isHost && !room.game && RULES.includes(m.v)) { room.rules = m.v; broadcastRoom(room); } return;
+    case 'timer': if (isHost && !room.game && TIMERS.includes(+m.v)) { room.timer = +m.v; broadcastRoom(room); } return;
     case 'bot': {
       if (!isHost || room.game) return;
       const i = +m.slot;
@@ -238,7 +244,7 @@ wss.on('connection', ws => {
         if (g && seat != null && !g.dropped[seat]) {
           // та же партия — дослать пропущенное; другая (старт прошёл мимо) — всю партию с начала
           const from = m.gid === g.id ? (+m.lastSeq || 0) : 0;
-          send(cl, { t: 'resume', gid: g.id, seed: g.seed, map: g.map, players: g.players, seq: g.seq });
+          send(cl, { t: 'resume', gid: g.id, seed: g.seed, map: g.map, rules: g.rules, timer: g.timer, players: g.players, seq: g.seq });
           g.log.filter(x => x.seq > from).forEach(x => send(cl, x));
         } else if (g && seat != null) send(cl, { t: 'gone' });
         broadcastRoom(room);
