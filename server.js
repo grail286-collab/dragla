@@ -17,9 +17,10 @@ const GRACE_MS = +(process.env.GRACE_MS || 30000);       // сколько жд�
 const LOBBY_GRACE_MS = +(process.env.LOBBY_GRACE_MS || 15000);
 const ROOM_IDLE_MS = 10 * 60 * 1000;                      // пустая комната удаляется через 10 минут
 const MAX_SEATS = 4;
-const BOT_NAMES = ['Ульф', 'Ирма', 'Борг', 'Сельма'];
+const BOT_MALE = ['Ульф', 'Борг', 'Торвин', 'Грок'];
+const BOT_FEMALE = ['Ирма', 'Сельма', 'Сигрид', 'Эйра'];
 const MAPS = ['small', 'medium', 'large'];
-const RULES = ['free', 'wake'];          // свободное исследование / пробуждение дракона
+const RULES = ['free', 'wake', 'hunt'];  // свободное исследование / пробуждение дракона / охотники
 const TIMERS = [0, 30, 60];              // таймер хода, секунд (0 — без таймера)
 const PORTRAITS = 8;
 
@@ -162,8 +163,11 @@ function handle(cl, m) {
       if (!isHost || room.game) return;
       const i = +m.slot;
       if (m.add && i >= 0 && i < MAX_SEATS && !room.slots[i]) {
-        const name = uniqueName(room, BOT_NAMES.find(n => !room.slots.some(s => s && s.name === n)) || 'Бот', i);
-        room.slots[i] = { bot: true, name, portrait: freePortrait(room, 7 - i, i) };
+        // имя бота — под его портрет: портреты 0–3 — героини, 4–7 — герои
+        const portrait = freePortrait(room, 7 - i, i);
+        const pool = portrait <= 3 ? BOT_FEMALE : BOT_MALE;
+        const name = uniqueName(room, pool.find(n => !room.slots.some(s => s && s.name === n)) || 'Бот', i);
+        room.slots[i] = { bot: true, name, portrait };
       } else if (!m.add && room.slots[i] && room.slots[i].bot) room.slots[i] = null;
       broadcastRoom(room); return;
     }
